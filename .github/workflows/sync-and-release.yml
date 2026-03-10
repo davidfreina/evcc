@@ -3,15 +3,13 @@ on:
   schedule:
     - cron: '0 0 * * *' # Läuft täglich um Mitternacht
   workflow_dispatch: # Erlaubt manuelles Starten zum Testen
-permissions:
-  contents: write
-  packages: write
 
 jobs:
   check-and-sync:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     
     steps:
       - name: Checkout Fork
