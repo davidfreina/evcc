@@ -1,0 +1,72 @@
+name: Sync, Patch and Release
+on:
+  schedule:
+    - cron: '0 0 * * *' # Läuft täglich um Mitternacht
+  workflow_dispatch: # Erlaubt manuelles Starten zum Testen
+
+jobs:
+  check-and-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout Fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new Upstream Release
+        id: check_release
+        run: |
+          # Hole den neuesten Release-Tag vom Original (Upstream)
+          UPSTREAM_TAG=$(curl -s https://api.github.com/repos/evcc-io/evcc/releases/latest | jq -r .tag_name)
+          # Hole deinen letzten Release-Tag
+          MY_TAG=$(git describe --tags --abbrev=0 || echo "none")
+          
+          echo "Upstream: $UPSTREAM_TAG, Mine: $MY_TAG"
+          
+          if [ "$UPSTREAM_TAG" != "$MY_TAG" ] && [ "$UPSTREAM_TAG" != "null" ]; then
+            echo "new_version=true" >> $GITHUB_OUTPUT
+            echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sync and Patch YAML
+        if: steps.check_release.outputs.new_version == 'true'
+        run: |
+          # 1. Upstream als Remote hinzufügen und mergen
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/evcc-io/evcc.git
+          git fetch upstream
+          git merge -X theirs upstream/main # Oder der entsprechende Branch-Name
+          git commit -m "chore: update local repo to remote release ${{ steps.check_release.outputs.tag }}"
+          git push
+
+      - name: Patch YAML File
+        if: steps.check_release.outputs.new_version == 'true'
+        run: |
+          FILE_PATH="templates/definition/charger/ocpp-goe.yaml"
+          
+          if [ -f "$FILE_PATH" ]; then
+            echo "Patching $FILE_PATH..."
+            # Löscht den Eintrag 'sponsorship' aus dem evcc-Array
+            yq -i 'del(.requirements.evcc[] | select(. == "sponsorship"))' "$FILE_PATH"
+            
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add "$FILE_PATH"
+            git commit -m "chore: remove sponsorship requirement for ${{ steps.check_release.outputs.tag }}"
+            git push
+          else
+            echo "Error: File $FILE_PATH not found!"
+            exit 1
+          fi
+
+      - name: Create Release
+        if: steps.check_release.outputs.new_version == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.check_release.outputs.tag }}
+          name: Release ${{ steps.check_release.outputs.tag }}
+          body: "Automatisierter Sync mit Upstream Release ${{ steps.check_release.outputs.tag }}"
