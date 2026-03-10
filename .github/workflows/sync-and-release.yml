@@ -40,8 +40,8 @@ jobs:
           git remote add upstream https://github.com/evcc-io/evcc.git
           git fetch upstream
           git merge -X theirs upstream/master # Oder der entsprechende Branch-Name
-          git commit -m "chore: update local repo to remote release ${{ steps.check_release.outputs.tag }}"
-          git push
+          # git commit -m "chore: update local repo to remote release ${{ steps.check_release.outputs.tag }}"
+          # git push
 
       - name: Patch YAML File
         if: steps.check_release.outputs.new_version == 'true'
