@@ -32,10 +32,11 @@ jobs:
           MY_TAG=$(git describe --tags --abbrev=0 || echo "none")
           
           echo "Upstream: $UPSTREAM_TAG, Mine: $MY_TAG"
-          
-          if [ "$UPSTREAM_TAG" != "$MY_TAG" ] && [ "$UPSTREAM_TAG" != "null" ]; then
-            echo "new_version=true" >> $GITHUB_OUTPUT
+          if [ "$UPSTREAM_TAG" != "null" ]; then
             echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+            if [ "$UPSTREAM_TAG" != "$MY_TAG" ]; then
+              echo "new_version=true" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Sync and Patch YAML
