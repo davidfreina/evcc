@@ -1,0 +1,160 @@
+name: Sync, Patch and Release
+on:
+  schedule:
+    - cron: '0 0 * * *' # Läuft täglich um Mitternacht
+  workflow_dispatch:
+    inputs:
+      forceDockerBuild:
+        description: 'Force docker build'
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  check-and-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
+    steps:
+      - name: Checkout Fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new Upstream Release
+        id: check_release
+        run: |
+          # Hole den neuesten Release-Tag vom Original (Upstream)
+          UPSTREAM_TAG=$(curl -s https://api.github.com/repos/evcc-io/evcc/releases/latest | jq -r .tag_name)
+          # Hole deinen letzten Release-Tag
+          MY_TAG=$(git describe --tags --abbrev=0 || echo "none")
+          
+          echo "Upstream: $UPSTREAM_TAG, Mine: $MY_TAG"
+          if [ "$UPSTREAM_TAG" != "null" ]; then
+            echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+            if [ "$UPSTREAM_TAG" != "$MY_TAG" ]; then
+              echo "new_version=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Sync and Patch YAML
+        if: steps.check_release.outputs.new_version == 'true'
+        run: |
+          # 1. Upstream als Remote hinzufügen und mergen
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/evcc-io/evcc.git
+          git fetch upstream
+          git merge -X theirs upstream/master # Oder der entsprechende Branch-Name
+          # git commit -m "chore: update local repo to remote release ${{ steps.check_release.outputs.tag }}"
+          # git push
+
+      - name: Patch YAML File
+        if: steps.check_release.outputs.new_version == 'true'
+        run: |
+          FILE_PATH="templates/definition/charger/ocpp-goe.yaml"
+          
+          if [ -f "$FILE_PATH" ]; then
+            echo "Patching $FILE_PATH..."
+            # Löscht den Eintrag 'sponsorship' aus dem evcc-Array
+            yq -i 'del(.requirements.evcc[] | select(. == "sponsorship"))' "$FILE_PATH"
+
+            if [ -n "$(git status --porcelain $FILE_PATH)" ]; then
+              echo "Changes detected, committing..."
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add "$FILE_PATH"
+              git commit -m "chore: remove sponsorship requirement for ${{ steps.check_release.outputs.tag }}"
+              git push
+            else
+              echo "No changes in $FILE_PATH (already patched or no difference), skipping commit."
+            fi
+          else
+            echo "Error: File $FILE_PATH not found!"
+            exit 1
+          fi
+
+
+      - name: Patch Go Source Files
+        if: steps.check_release.outputs.new_version == 'true'
+        run: |
+          # Patch util/sponsor/auth.go
+          FILE_PATH="util/sponsor/auth.go"
+          
+          if [ -f "$FILE_PATH" ]; then
+            echo "Patching $FILE_PATH..."
+            
+            # Use sed to make the changes from your diff
+            # Change 1: IsAuthorized() - return true instead of len(Subject) > 0
+            sed -i 's/return len(Subject) > 0/return true/' "$FILE_PATH"
+            
+            # Change 2: IsAuthorizedForApi() - return IsAuthorized() instead of full check
+            sed -i 's/return IsAuthorized() && Subject != unavailable && Token != ""/return IsAuthorized()/' "$FILE_PATH"
+            
+            # Change 3: ConfigureSponsorship() - add early return nil and cleanup test code
+            # This is more complex - consider using a heredoc or python script
+
+            echo "Checking if return nil exists in ConfigureSponsorship..."
+            
+            # Check if the early return already exists
+            if ! grep -A 2 "defer mu.Unlock()" "$FILE_PATH" | grep -q "return nil"; then
+              echo "Adding return nil to ConfigureSponsorship..."
+              
+              # Insert "return nil" after "defer mu.Unlock()" in ConfigureSponsorship function
+              sed -i '/func ConfigureSponsorship/,/^}/{ /defer mu.Unlock()/a\
+              
+              return nil
+              }' "$FILE_PATH"
+            else
+              echo "Early return already exists in ConfigureSponsorship, skipping."
+            fi
+            
+            if [ -n "$(git status --porcelain $FILE_PATH)" ]; then
+              echo "Changes detected, committing..."
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add "$FILE_PATH"
+              git commit -m "chore: update sponsorship checks for ${{ steps.check_release.outputs.tag }}"
+              git push
+            else
+              echo "No changes in $FILE_PATH, skipping commit."
+            fi
+          else
+            echo "Error: File $FILE_PATH not found!"
+            exit 1
+          fi
+
+      - name: Create Release
+        if: steps.check_release.outputs.new_version == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.check_release.outputs.tag }}
+          name: Release ${{ steps.check_release.outputs.tag }}
+          body: "Automatisierter Sync mit Upstream Release ${{ steps.check_release.outputs.tag }}"
+
+      - name: Set up Docker Buildx
+        if: steps.check_release.outputs.new_version == 'true' || inputs.forceDockerBuild == true
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        if: steps.check_release.outputs.new_version == 'true' || inputs.forceDockerBuild == true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: steps.check_release.outputs.new_version == 'true' || inputs.forceDockerBuild == true
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Das Image wird unter deinem Namen gespeichert
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/evcc:latest
+            ghcr.io/${{ github.repository_owner }}/evcc:${{ steps.check_release.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
