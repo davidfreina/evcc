@@ -47,7 +47,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/evcc-io/evcc.git
           git fetch upstream
-          git merge -X theirs upstream/${{ steps.check_release.outputs.tag }} # Oder der entsprechende Branch-Name
+          git checkout ${{ steps.check_release.outputs.tag }} # Oder der entsprechende Branch-Name
           # git commit -m "chore: update local repo to remote release ${{ steps.check_release.outputs.tag }}"
           # git push
 
