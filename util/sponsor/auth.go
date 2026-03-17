@@ -58,6 +58,7 @@ func ConfigureSponsorship(token string) error {
 	mu.Lock()
 	defer mu.Unlock()
     
+    
 
 	if token == "" {
 		if sub := checkVictron(); sub != "" {
