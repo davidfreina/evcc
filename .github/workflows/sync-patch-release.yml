@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    
+
     steps:
       - name: Checkout Fork
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
           UPSTREAM_TAG=$(curl -s https://api.github.com/repos/evcc-io/evcc/releases/latest | jq -r .tag_name)
           # Hole deinen letzten Release-Tag
           MY_TAG=$(git describe --tags --abbrev=0 || echo "none")
-          
+
           echo "Upstream: $UPSTREAM_TAG, Mine: $MY_TAG"
           if [ "$UPSTREAM_TAG" != "null" ]; then
             echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
@@ -42,89 +42,41 @@ jobs:
       - name: Sync and Patch YAML
         if: steps.check_release.outputs.new_version == 'true'
         run: |
-          # 1. Upstream als Remote hinzufügen und mergen
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git remote add upstream https://github.com/evcc-io/evcc.git
-          git fetch upstream
-          git checkout -b ${{ steps.check_release.outputs.tag }} # Oder der entsprechende Branch-Name
-          # git commit -m "chore: update local repo to remote release ${{ steps.check_release.outputs.tag }}"
-          # git push
+          git fetch upstream --tags
 
-      - name: Patch YAML File
-        if: steps.check_release.outputs.new_version == 'true'
-        run: |
-          FILE_PATH="templates/definition/charger/ocpp-goe.yaml"
-          
-          if [ -f "$FILE_PATH" ]; then
-            echo "Patching $FILE_PATH..."
-            # Löscht den Eintrag 'sponsorship' aus dem evcc-Array
-            yq -i 'del(.requirements.evcc[] | select(. == "sponsorship"))' "$FILE_PATH"
+          git reset --hard ${{ steps.check_release.outputs.tag }}
+          git checkout origin/master -- .github/workflows/sync-patch-release.yml
 
-            if [ -n "$(git status --porcelain $FILE_PATH)" ]; then
-              echo "Changes detected, committing..."
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git add "$FILE_PATH"
-              git commit -m "chore: remove sponsorship requirement for ${{ steps.check_release.outputs.tag }}"
-              git push
-            else
-              echo "No changes in $FILE_PATH (already patched or no difference), skipping commit."
-            fi
-          else
-            echo "Error: File $FILE_PATH not found!"
-            exit 1
+          # 3. YAML Patch (Charger)
+          FILE_YAML="templates/definition/charger/ocpp-goe.yaml"
+          if [ -f "$FILE_YAML" ]; then
+            echo "Patching YAML..."
+            yq -i 'del(.requirements.evcc[] | select(. == "sponsorship"))' "$FILE_YAML"
           fi
 
-
-      - name: Patch Go Source Files
-        if: steps.check_release.outputs.new_version == 'true'
-        run: |
-          # Patch util/sponsor/auth.go
-          FILE_PATH="util/sponsor/auth.go"
-          
-          if [ -f "$FILE_PATH" ]; then
-            echo "Patching $FILE_PATH..."
+          # 4. Go Source Patches (Sponsor Auth)
+          FILE_GO="util/sponsor/auth.go"
+          if [ -f "$FILE_GO" ]; then
+            echo "Patching Go files..."
+            sed -i 's/return len(Subject) > 0/return true/' "$FILE_GO"
+            sed -i 's/return IsAuthorized() && Subject != unavailable && Token != ""/return IsAuthorized()/' "$FILE_GO"
             
-            # Use sed to make the changes from your diff
-            # Change 1: IsAuthorized() - return true instead of len(Subject) > 0
-            sed -i 's/return len(Subject) > 0/return true/' "$FILE_PATH"
-            
-            # Change 2: IsAuthorizedForApi() - return IsAuthorized() instead of full check
-            sed -i 's/return IsAuthorized() && Subject != unavailable && Token != ""/return IsAuthorized()/' "$FILE_PATH"
-            
-            # Change 3: ConfigureSponsorship() - add early return nil and cleanup test code
-            # This is more complex - consider using a heredoc or python script
-
-            echo "Checking if return nil exists in ConfigureSponsorship..."
-            
-            # Check if the early return already exists
-            if ! grep -A 2 "defer mu.Unlock()" "$FILE_PATH" | grep -q "return nil"; then
-              echo "Adding return nil to ConfigureSponsorship..."
-              
-              # Insert "return nil" after "defer mu.Unlock()" in ConfigureSponsorship function
+            if ! grep -A 2 "defer mu.Unlock()" "$FILE_GO" | grep -q "return nil"; then
               sed -i '/func ConfigureSponsorship/,/^}/{ /defer mu.Unlock()/a\
-              
               return nil
-              }' "$FILE_PATH"
-            else
-              echo "Early return already exists in ConfigureSponsorship, skipping."
+              }' "$FILE_GO"
             fi
-            
-            if [ -n "$(git status --porcelain $FILE_PATH)" ]; then
-              echo "Changes detected, committing..."
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git add "$FILE_PATH"
-              git commit -m "chore: update sponsorship checks for ${{ steps.check_release.outputs.tag }}"
-              git push
-            else
-              echo "No changes in $FILE_PATH, skipping commit."
-            fi
-          else
-            echo "Error: File $FILE_PATH not found!"
-            exit 1
           fi
+
+          # 5. Alle Änderungen committen und Force-Push auf deinen Master
+          # Damit wird dein Fork-Master exakt zum Release-Stand + Patches
+          git add .
+          git commit -m "chore: sync to ${{ steps.check_release.outputs.tag }} and apply patches"
+          git push origin master --force
 
       - name: Create Release
         if: steps.check_release.outputs.new_version == 'true'
