@@ -11,19 +11,19 @@ import (
 )
 
 func init() {
-	registry.Add("homeassistant", NewHomeAssistantFromConfig)
+	registry.Add("homeassistant", NewHAMessengerFromConfig)
 }
 
-// HomeAssistant implements the Home Assistant messenger
-type HomeAssistant struct {
+// HAMessenger implements the Home Assistant messenger
+type HAMessenger struct {
 	log    *util.Logger
 	conn   *homeassistant.Connection
 	notify string
 	data   map[string]any
 }
 
-// NewHomeAssistantFromConfig creates a new Home Assistant messenger
-func NewHomeAssistantFromConfig(other map[string]any) (api.Messenger, error) {
+// NewHAMessengerFromConfig creates a new Home Assistant messenger
+func NewHAMessengerFromConfig(other map[string]any) (api.Messenger, error) {
 	var cc struct {
 		URI    string
 		Notify string
@@ -45,7 +45,7 @@ func NewHomeAssistantFromConfig(other map[string]any) (api.Messenger, error) {
 		return nil, err
 	}
 
-	return &HomeAssistant{
+	return &HAMessenger{
 		log:    log,
 		conn:   conn,
 		notify: cc.Notify,
@@ -54,7 +54,7 @@ func NewHomeAssistantFromConfig(other map[string]any) (api.Messenger, error) {
 }
 
 // Send sends a notification via Home Assistant
-func (m *HomeAssistant) Send(title, msg string) {
+func (m *HAMessenger) Send(title, msg string) {
 	var err error
 	if m.notify != "" {
 		domain, service, _ := strings.Cut(m.notify, ".")

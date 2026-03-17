@@ -57,8 +57,7 @@ func IsAuthorizedForApi() bool {
 func ConfigureSponsorship(token string) error {
 	mu.Lock()
 	defer mu.Unlock()
-    
-    
+    return nil
 
 	if token == "" {
 		if sub := checkVictron(); sub != "" {
