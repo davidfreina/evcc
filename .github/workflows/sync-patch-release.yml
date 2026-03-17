@@ -48,7 +48,7 @@ jobs:
           git remote add upstream https://github.com/evcc-io/evcc.git
           git fetch upstream --tags
 
-          git checkout upstream/${{ steps.check_release.outputs.tag }} -- . ':!.github/workflows'
+          git checkout ${{ steps.check_release.outputs.tag }} -- . ':!.github/workflows'
 
           # 3. YAML Patch (Charger)
           FILE_YAML="templates/definition/charger/ocpp-goe.yaml"
