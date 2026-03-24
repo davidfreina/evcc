@@ -46,7 +46,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git remote add upstream https://github.com/evcc-io/evcc.git
-          git fetch upstream --tags
+          git fetch upstream --tags --force
 
           git checkout ${{ steps.check_release.outputs.tag }} -- . ':!.github/workflows'
 
