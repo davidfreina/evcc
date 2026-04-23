@@ -48,6 +48,8 @@ jobs:
           git remote add upstream https://github.com/evcc-io/evcc.git
           git fetch upstream --tags --force
 
+          find . -maxdepth 1 ! -name '.' ! -name '.git' ! -name '.github' -exec rm -rf {} +
+
           git checkout ${{ steps.check_release.outputs.tag }} -- . ':!.github/workflows'
 
           # 3. YAML Patch (Charger)
