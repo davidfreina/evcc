@@ -21,6 +21,7 @@ type Template struct {
 	Auth         map[string]any `json:",omitempty"` // OAuth parameters (if required)
 	Group        string         `json:",omitempty"` // the group this template belongs to, references groupList entries
 	Covers       []string       `json:",omitempty"` // list of covered outdated template names
+	Link         string         `json:",omitempty"` // integration provider link, can be overridden per product
 	Products     []Product      `json:",omitempty"` // list of products this template is compatible with
 	Capabilities []Capability   `json:"-"`
 	Countries    []CountryCode  `json:",omitempty"` // list of countries supported by this template
@@ -85,6 +86,16 @@ func (t *Template) Validate() error {
 	for _, c := range t.Countries {
 		if !c.IsValid() {
 			return fmt.Errorf("invalid country code: '%s'", c)
+		}
+	}
+
+	links := []string{t.Link}
+	for _, p := range t.Products {
+		links = append(links, p.Link)
+	}
+	for _, l := range links {
+		if l != "" && !strings.HasPrefix(l, "https://") {
+			return fmt.Errorf("invalid link: '%s'", l)
 		}
 	}
 
@@ -325,7 +336,7 @@ func formatValue(val any) string {
 }
 
 // RenderResult renders the result template to instantiate the proxy
-func (t *Template) RenderResult(renderMode int, other map[string]any) ([]byte, map[string]any, error) {
+func (t *Template) RenderResult(class Class, renderMode int, other map[string]any) ([]byte, map[string]any, error) {
 	values := t.Defaults(renderMode)
 	if err := mergeMaps(other, values); err != nil {
 		return nil, values, err
@@ -422,7 +433,13 @@ func (t *Template) RenderResult(renderMode int, other map[string]any) ([]byte, m
 		}
 	}
 
-	tmpl, err := FuncMap(template.Must(baseTmpl.Clone())).Parse(t.Render)
+	// class-local includes take precedence over the global ones
+	base, ok := classTmpl[class]
+	if !ok {
+		base = baseTmpl
+	}
+
+	tmpl, err := FuncMap(template.Must(base.Clone())).Parse(t.Render)
 	if err != nil {
 		return nil, res, err
 	}
