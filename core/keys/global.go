@@ -33,6 +33,7 @@ const (
 	Plant              = "plant"
 	Telemetry          = "telemetry"
 	Optimizer          = "optimizer"
+	OptimizerAutomatic = "optimizerAutomatic" // optimizer automatic level: off, battery, full
 	Mcp                = "mcp"
 	DemoMode           = "demoMode"
 	Remote             = "remote"
@@ -41,4 +42,5 @@ const (
 	AuthDisabled       = "authDisabled"
 	AuthProviders      = "authProviders"
 	DeviceColors       = "deviceColors"
+	Onboarding         = "onboarding" // setup wizard and checklist state
 )
