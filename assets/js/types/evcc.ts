@@ -547,6 +547,9 @@ export interface LoadpointThreshold {
   threshold: number;
 }
 
+/** Demand forecast strategy of a heating loadpoint. */
+export type DemandPredictor = "daily" | "weekday" | "temperature";
+
 export interface ConfigLoadpoint {
   id?: number;
   name?: string;
@@ -567,6 +570,7 @@ export interface ConfigLoadpoint {
   limitEnergy?: number;
   limitSoc?: number;
   minSoc?: number;
+  demandPredictor?: DemandPredictor;
   circuit?: string;
   thresholds: {
     enable: LoadpointThreshold;
@@ -1267,7 +1271,9 @@ export interface LoadpointSuggestion {
   /** Planned site grid flow of the slot in W, positive means import. */
   grid?: number;
   /** Planned home battery discharge feeding the site in W. */
-  battery?: number;
+  batteryDischarge?: number;
+  /** Planned home battery charge in W. */
+  batteryCharge?: number;
   /** Suggestion differs from the current operating mode. */
   actionable?: boolean;
 }
@@ -1369,6 +1375,8 @@ export interface Vehicle {
   features?: string[];
   /** Usable battery capacity in kWh. */
   capacity?: number;
+  /** Maximum number of phases supported by the vehicle. Zero means unknown. */
+  phases?: number;
   /** Vehicle icon name for UI display. */
   icon?: string;
 }
@@ -1540,6 +1548,7 @@ export interface EvOpt {
   req: OptimizationInput;
   res: OptimizationResult;
   details: OptimizationDetails;
+  hosted: boolean;
 }
 
 // last plan explanation, plan is the updated time of the explained plan
